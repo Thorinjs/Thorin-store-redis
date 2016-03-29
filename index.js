@@ -26,13 +26,23 @@ module.exports = function init(thorin) {
     * Initializes the store.
     * */
     init(storeConfig) {
-      this[config] = thorin.util.extend(storeConfig, {
-        debug: true,
+      this[config] = thorin.util.extend({
+        debug: false,
         host: 'localhost',
         port: 6379,
         password: null,
         options: {}
-      });
+      }, storeConfig);
+    }
+
+    /*
+    * Internal logger function that will log stuff.
+    * */
+    _log(command, args) {
+      if(!this[config].debug) return;
+      var str = 'Thorin.store.' + this.name + ': ' + command + ' ' + args.join(' ');
+      // TODO: request a logger from thorin.
+      console.info(str);
     }
 
     /*
@@ -127,6 +137,7 @@ module.exports = function init(thorin) {
           this[connections].publish.connection.publish(channel, data, done);
         });
         async.series(calls, (e) => {
+          this._log('publish', [channel, data]);
           if(e) return reject(e);
           resolve();
         });
@@ -156,6 +167,7 @@ module.exports = function init(thorin) {
           done();
         });
         async.series(calls, (e) => {
+          this._log('subscribe', [channel, callback.name]);
           if(e) return reject(e);
           resolve();
         });
@@ -168,6 +180,7 @@ module.exports = function init(thorin) {
     unsubscribe(channel, _callback) {
       return new Promise((resolve, reject) => {
         if(!this[connections].subscribe) return resolve();
+        this._log('unsubscribe', [channel]);
         try {
           this[connections].subscribe.handleUnsubscribe(channel, _callback);
         } catch(e) {
@@ -192,6 +205,8 @@ module.exports = function init(thorin) {
         let args = Array.prototype.slice.call(arguments);
         args.splice(0, 1);
         args.push((err, res) => {
+          args.pop();
+          this._log(command, [args]);
           if(err) {
             return reject(thorin.error('REDIS.' + command.toUpperCase(), err.message, err));
           }
@@ -242,6 +257,7 @@ module.exports = function init(thorin) {
           var mObj = connObj.multi();
           cmds.forEach((item) => {
             let cmd = item.splice(0, 1)[0];
+            self._log('multi: ' + cmd, [item]);
             mObj[cmd].apply(mObj, item);
           });
           mObj.exec((err, results) => {
