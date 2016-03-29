@@ -1,0 +1,20 @@
+{
+  "name": "thorin-store-redis",
+  "author": "Stiudeo",
+  "version": "1.0.0",
+  "dependencies": {
+    "redis": "2.5.3",
+    "async": "^1.4.2"
+  },
+  "description": "Thorin.js redis store",
+  "main": "index.js",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/Stiudeo/Thorin-store-redis"
+  },
+  "homepage": "http://thorinjs.com",
+  "bugs": {
+    "url": "https://github.com/Stiudeo/Thorin-store-redis/issues"
+  }
+}
