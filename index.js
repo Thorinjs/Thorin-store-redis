@@ -14,7 +14,10 @@ module.exports = function init(thorin) {
   const config = Symbol(),
     connections = Symbol();
   class ThorinRedisStore extends thorin.Interface.Store {
-    static publicName() { return "redis"; }
+    static publicName() {
+      return "redis";
+    }
+
     constructor() {
       super();
       this[config] = {};
@@ -26,36 +29,46 @@ module.exports = function init(thorin) {
     }
 
     /*
-    * Initializes the store.
-    * */
+     * Initializes the store.
+     * */
     init(storeConfig) {
       this[config] = thorin.util.extend({
         debug: false,
         host: 'localhost',
         port: 6379,
         password: null,
+        namespace: 'rns:', // the namespace that we'll use when calling redis.key('myKey') => rns:myKey
         options: {} // custom redis options.
       }, storeConfig);
     }
 
     /*
-    * Internal logger function that will log stuff.
-    * */
+     * Builds a key by appending the store's namespace prefix.
+     * */
+    key(name) {
+      if(typeof this[config].namespace !== 'string') return name;
+      if(typeof name === 'object') return name;
+      return this[config].namespace + name;
+    }
+
+    /*
+     * Internal logger function that will log stuff.
+     * */
     _log(command, args) {
-      if(!this[config].debug) return;
+      if (!this[config].debug) return;
       var str = 'Thorin.store.' + this.name + ': ' + command + ' ' + args.join(' ');
       // TODO: request a logger from thorin.
       console.info(str);
     }
 
     /*
-    * Initializes the connections. By default, we only initialize the default
-    * connection. The first time publish() or subscribe() is called, we initialize
-    * the others.
-    * */
+     * Initializes the connections. By default, we only initialize the default
+     * connection. The first time publish() or subscribe() is called, we initialize
+     * the others.
+     * */
     run(done) {
       this.createConnection('default', this[config], (err) => {
-        if(err) {
+        if (err) {
           return done(thorin.error('REDIS.CONNECTION', 'Could not establish a connection to redis.', err));
         }
         done();
@@ -63,29 +76,29 @@ module.exports = function init(thorin) {
     }
 
     /*
-    * Closes all the connections programatically.
-    * */
+     * Closes all the connections programatically.
+     * */
     stop(done) {
       this[connections].default.disconnect();
-      if(this[connections].publish) {
+      if (this[connections].publish) {
         this[connections].publish.disconnect();
       }
-      if(this[connections].subscribe) {
+      if (this[connections].subscribe) {
         this[connections].subscribe.disconnect();
       }
       done();
     }
 
     /*
-    * Creates a new connection with the given data.
-    * */
+     * Creates a new connection with the given data.
+     * */
     createConnection(name, config, done) {
-      if(this[connections][name]) {
-        return done(thorin.error('REDIS.CONNECTION_EXISTS', 'A redis connection already exists with the name ' + name +'.'));
+      if (this[connections][name]) {
+        return done(thorin.error('REDIS.CONNECTION_EXISTS', 'A redis connection already exists with the name ' + name + '.'));
       }
       let conn = new Connection(name, config);
       conn.connect((e) => {
-        if(e) return done(e);
+        if (e) return done(e);
         conn.startPing();
         done(null, conn);
       });
@@ -100,7 +113,7 @@ module.exports = function init(thorin) {
         let data = {
           name: name
         };
-        if(discTs > 0) {
+        if (discTs > 0) {
           data.duration = Date.now() - discTs;
           discTs = 0;
         }
@@ -116,58 +129,58 @@ module.exports = function init(thorin) {
      * Other values are "publish" or "subscribe"
      * */
     isConnected(_name) {
-      if(!_name) _name = 'default';
-      if(!this[connections][_name]) return false;
+      if (!_name) _name = 'default';
+      if (!this[connections][_name]) return false;
       return this[connections][_name].connected;
     }
 
     /*
-    * Performs a publish() to the given channel.
-    * Note: if no publish connection exists, we will create one automatically.
-    * Returns a promise.
-    * */
+     * Performs a publish() to the given channel.
+     * Note: if no publish connection exists, we will create one automatically.
+     * Returns a promise.
+     * */
     publish(channel, data) {
       return new Promise((resolve, reject) => {
-        if(typeof data === 'object' && data) {
+        if (typeof data === 'object' && data) {
           data = JSON.stringify(data);
         }
         var calls = [];
         /* init connection */
-        if(!this[connections].publish) {
+        if (!this[connections].publish) {
           calls.push((done) => {
             this.createConnection('publish', this[config], done);
           });
         }
         calls.push((done) => {
-          if(!this.isConnected('publish')) {
+          if (!this.isConnected('publish')) {
             return done(thorin.error('REDIS.NOT_CONNECTED', 'The publisher connection is not ready yet.'));
           }
           this[connections].publish.connection.publish(channel, data, done);
         });
         async.series(calls, (e) => {
           this._log('publish', [channel, data]);
-          if(e) return reject(thorin.error('REDIS.PUBLISH', 'Failed to publish to channel', e, 400));
+          if (e) return reject(thorin.error('REDIS.PUBLISH', 'Failed to publish to channel', e, 400));
           resolve();
         });
       });
     }
 
     /*
-    * Subscribes to a channel with the given callback.
-    * Note: if no subscriber connection exists, we will create one automatically.
-    * Returns a promise.
-    * */
+     * Subscribes to a channel with the given callback.
+     * Note: if no subscriber connection exists, we will create one automatically.
+     * Returns a promise.
+     * */
     subscribe(channel, callback) {
       return new Promise((resolve, reject) => {
         var calls = [];
         /* init connection */
-        if(!this[connections].subscribe) {
+        if (!this[connections].subscribe) {
           calls.push((done) => {
             this.createConnection('subscribe', this[config], done);
           });
         }
         calls.push((done) => {
-          if(!this.isConnected('subscribe')) {
+          if (!this.isConnected('subscribe')) {
             return done(thorin.error('REDIS.NOT_CONNECTED', 'The subscriber connection is not ready yet.'));
           }
           this[connections].subscribe.handleSubscribe(channel, callback);
@@ -176,22 +189,22 @@ module.exports = function init(thorin) {
         });
         async.series(calls, (e) => {
           this._log('subscribe', [channel, callback.name]);
-          if(e) return reject(thorin.error('REDIS.SUBSCRIBE', 'Failed to subscribe to channel', e));
+          if (e) return reject(thorin.error('REDIS.SUBSCRIBE', 'Failed to subscribe to channel', e));
           resolve();
         });
       });
     }
 
     /*
-    * Unsubscribes from the given channel.
-    * */
+     * Unsubscribes from the given channel.
+     * */
     unsubscribe(channel, _callback) {
       return new Promise((resolve, reject) => {
-        if(!this[connections].subscribe) return resolve();
+        if (!this[connections].subscribe) return resolve();
         this._log('unsubscribe', [channel]);
         try {
           this[connections].subscribe.handleUnsubscribe(channel, _callback);
-        } catch(e) {
+        } catch (e) {
           return reject(thorin.error('REDIS.UNSUBSCRIBE', 'Failed to unsubscribe from channel', e));
         }
         resolve();
@@ -199,15 +212,15 @@ module.exports = function init(thorin) {
     }
 
     /*
-    * Runs any redis command, promisified.
-    * */
+     * Runs any redis command, promisified.
+     * */
     exec(command) {
       return new Promise((resolve, reject) => {
-        if(!this.isConnected()) {
+        if (!this.isConnected()) {
           return reject(thorin.error('REDIS.NOT_CONNECTED', 'The connection is not active yet.'));
         }
         command = command.toLowerCase();
-        if(typeof this[connections].default.connection[command] !== 'function') {
+        if (typeof this[connections].default.connection[command] !== 'function') {
           return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid command issued: ' + command, 500));
         }
         let args = Array.prototype.slice.call(arguments);
@@ -215,7 +228,7 @@ module.exports = function init(thorin) {
         args.push((err, res) => {
           args.pop();
           this._log(command, [args]);
-          if(err) {
+          if (err) {
             return reject(thorin.error('REDIS.EXEC', 'Redis command failed to execute.', err));
           }
           resolve(res);
@@ -225,16 +238,16 @@ module.exports = function init(thorin) {
     }
 
     /*
-    * Performs a multi() with multiple execs.
-    * Syntax is:
-    * var multi = redis.multi();
-    * multi.exec('GET', 'myKey')
-    * multi.exec('SET', 'somethingElse')
-    * multi.commit().then((results) => {
-    *   results[0] => GET myKey
-    *   results[1] => SET myKey
-    * });
-    * */
+     * Performs a multi() with multiple execs.
+     * Syntax is:
+     * var multi = redis.multi();
+     * multi.exec('GET', 'myKey')
+     * multi.exec('SET', 'somethingElse')
+     * multi.commit().then((results) => {
+     *   results[0] => GET myKey
+     *   results[1] => SET myKey
+     * });
+     * */
     multi() {
       let self = this,
         connObj = self[connections].default.connection;
@@ -251,14 +264,14 @@ module.exports = function init(thorin) {
       /* Commits the multi */
       wrap.commit = function DoCommit() {
         return new Promise((resolve, reject) => {
-          if(!self.isConnected()) {
+          if (!self.isConnected()) {
             return reject(thorin.error('REDIS.NOT_CONNECTED', 'Redis connection is not ready.'));
           }
-          if(cmds.length === 0) return resolve();
+          if (cmds.length === 0) return resolve();
           // check commands first.
-          for(let i=0; i < cmds.length; i++) {
+          for (let i = 0; i < cmds.length; i++) {
             let cmd = cmds[i][0];
-            if(typeof connObj[cmd] !== 'function') {
+            if (typeof connObj[cmd] !== 'function') {
               return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid redis command:' + cmd, 500));
             }
           }
@@ -269,7 +282,7 @@ module.exports = function init(thorin) {
             mObj[cmd].apply(mObj, item);
           });
           mObj.exec((err, results) => {
-            if(err) {
+            if (err) {
               return reject(thorin.error('REDIS.MULTI', 'Redis transaction encountered an error.', err));
             }
             resolve(results);
