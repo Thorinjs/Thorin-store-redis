@@ -8,6 +8,9 @@ const Connection = require('./lib/connection'),
  *  - disconnect({name})
  */
 module.exports = function init(thorin) {
+  // Attach the Redis error parser to thorin.
+  thorin.addErrorParser(require('./lib/errorParser'));
+
   const config = Symbol(),
     connections = Symbol();
   class ThorinRedisStore extends thorin.Interface.Store {
@@ -31,7 +34,7 @@ module.exports = function init(thorin) {
         host: 'localhost',
         port: 6379,
         password: null,
-        options: {}
+        options: {} // custom redis options.
       }, storeConfig);
     }
 
@@ -51,7 +54,12 @@ module.exports = function init(thorin) {
     * the others.
     * */
     run(done) {
-      this.createConnection('default', this[config], done);
+      this.createConnection('default', this[config], (err) => {
+        if(err) {
+          return done(thorin.error('REDIS.CONNECTION', 'Could not establish a connection to redis.', err));
+        }
+        done();
+      });
     }
 
     /*
@@ -138,7 +146,7 @@ module.exports = function init(thorin) {
         });
         async.series(calls, (e) => {
           this._log('publish', [channel, data]);
-          if(e) return reject(e);
+          if(e) return reject(thorin.error('REDIS.PUBLISH', 'Failed to publish to channel', e, 400));
           resolve();
         });
       });
@@ -168,7 +176,7 @@ module.exports = function init(thorin) {
         });
         async.series(calls, (e) => {
           this._log('subscribe', [channel, callback.name]);
-          if(e) return reject(e);
+          if(e) return reject(thorin.error('REDIS.SUBSCRIBE', 'Failed to subscribe to channel', e));
           resolve();
         });
       });
@@ -184,7 +192,7 @@ module.exports = function init(thorin) {
         try {
           this[connections].subscribe.handleUnsubscribe(channel, _callback);
         } catch(e) {
-          return reject(e);
+          return reject(thorin.error('REDIS.UNSUBSCRIBE', 'Failed to unsubscribe from channel', e));
         }
         resolve();
       });
@@ -200,7 +208,7 @@ module.exports = function init(thorin) {
         }
         command = command.toLowerCase();
         if(typeof this[connections].default.connection[command] !== 'function') {
-          return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid command issued: ' + command));
+          return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid command issued: ' + command, 500));
         }
         let args = Array.prototype.slice.call(arguments);
         args.splice(0, 1);
@@ -208,7 +216,7 @@ module.exports = function init(thorin) {
           args.pop();
           this._log(command, [args]);
           if(err) {
-            return reject(thorin.error('REDIS.' + command.toUpperCase(), err.message, err));
+            return reject(thorin.error('REDIS.EXEC', 'Redis command failed to execute.', err));
           }
           resolve(res);
         });
@@ -251,7 +259,7 @@ module.exports = function init(thorin) {
           for(let i=0; i < cmds.length; i++) {
             let cmd = cmds[i][0];
             if(typeof connObj[cmd] !== 'function') {
-              return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid redis command:' + cmd));
+              return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid redis command:' + cmd, 500));
             }
           }
           var mObj = connObj.multi();
@@ -262,7 +270,7 @@ module.exports = function init(thorin) {
           });
           mObj.exec((err, results) => {
             if(err) {
-              return reject(thorin.error('REDIS.MULTI', err.message, err));
+              return reject(thorin.error('REDIS.MULTI', 'Redis transaction encountered an error.', err));
             }
             resolve(results);
           });
