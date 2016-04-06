@@ -52,16 +52,6 @@ module.exports = function init(thorin) {
     }
 
     /*
-     * Internal logger function that will log stuff.
-     * */
-    _log(command, args) {
-      if (!this[config].debug) return;
-      var str = 'Thorin.store.' + this.name + ': ' + command + ' ' + args.join(' ');
-      // TODO: request a logger from thorin.
-      console.info(str);
-    }
-
-    /*
      * Initializes the connections. By default, we only initialize the default
      * connection. The first time publish() or subscribe() is called, we initialize
      * the others.
@@ -89,14 +79,18 @@ module.exports = function init(thorin) {
       done();
     }
 
+
     /*
      * Creates a new connection with the given data.
      * */
-    createConnection(name, config, done) {
+    createConnection(name, connectionConfig, done) {
       if (this[connections][name]) {
         return done(thorin.error('REDIS.CONNECTION_EXISTS', 'A redis connection already exists with the name ' + name + '.'));
       }
-      let conn = new Connection(name, config);
+      let conn = new Connection(name, connectionConfig);
+      if(this[config].debug) {
+        connectionLogger.call(this, conn);
+      }
       conn.connect((e) => {
         if (e) return done(e);
         conn.startPing();
@@ -158,7 +152,7 @@ module.exports = function init(thorin) {
           this[connections].publish.connection.publish(channel, data, done);
         });
         async.series(calls, (e) => {
-          this._log('publish', [channel, data]);
+          this[connections].publish.emit('publish', channel, data);
           if (e) return reject(thorin.error('REDIS.PUBLISH', 'Failed to publish to channel', e, 400));
           resolve();
         });
@@ -188,7 +182,6 @@ module.exports = function init(thorin) {
           done();
         });
         async.series(calls, (e) => {
-          this._log('subscribe', [channel, callback.name]);
           if (e) return reject(thorin.error('REDIS.SUBSCRIBE', 'Failed to subscribe to channel', e));
           resolve();
         });
@@ -201,7 +194,6 @@ module.exports = function init(thorin) {
     unsubscribe(channel, _callback) {
       return new Promise((resolve, reject) => {
         if (!this[connections].subscribe) return resolve();
-        this._log('unsubscribe', [channel]);
         try {
           this[connections].subscribe.handleUnsubscribe(channel, _callback);
         } catch (e) {
@@ -227,12 +219,12 @@ module.exports = function init(thorin) {
         args.splice(0, 1);
         args.push((err, res) => {
           args.pop();
-          this._log(command, [args]);
           if (err) {
             return reject(thorin.error('REDIS.EXEC', 'Redis command failed to execute.', err));
           }
           resolve(res);
         });
+        this[connections].default.emit('command',command, args);
         this[connections].default.connection[command].apply(this[connections].default.connection, args);
       });
     }
@@ -278,9 +270,10 @@ module.exports = function init(thorin) {
           var mObj = connObj.multi();
           cmds.forEach((item) => {
             let cmd = item.splice(0, 1)[0];
-            self._log('multi: ' + cmd, [item]);
             mObj[cmd].apply(mObj, item);
+            item.splice(0, 0, cmd);
           });
+          self[connections].default.emit('multi', cmds);
           mObj.exec((err, results) => {
             if (err) {
               return reject(thorin.error('REDIS.MULTI', 'Redis transaction encountered an error.', err));
@@ -291,6 +284,49 @@ module.exports = function init(thorin) {
       };
       return wrap;
     }
+  }
+
+  /*
+  * Internal function that will listen for connection events.
+  * */
+  function connectionLogger(conObj) {
+    let logger = thorin.logger(this.name),
+      connectionName = conObj.name === 'default' ? '' : conObj.name + ': ';
+    conObj.on('connect', () => {
+      logger.info(connectionName + 'Connected to redis server');
+    }).on('disconnect', () => {
+      logger.warn(connectionName + 'Disconnected from redis server');
+    }).on('reconnect', () => {
+      logger.info(connectionName + 'Reconnected to redis server');
+    }).on('close', () => {
+      logger.info(connectionName + 'Redis connection closed.');
+    }).on('subscribe.message', (channel, msg) => {
+      logger.trace(connectionName + 'Received message on channel [%s]', channel, msg);
+    }).on('subscribe.channel', (channel) => {
+      logger.trace(connectionName + 'Subscribed to channel [%s]', channel);
+    }).on('unsubscribe', (channel) => {
+      logger.trace(connectionName + 'Unsubscribed from channel [%s]', channel);
+    }).on('publish', (channel, msg) => {
+      logger.trace(connectionName + 'Publish to channel [%s]', channel, msg);
+    }).on('command', (cmd, cmdArgs) => {
+      let items = [cmd.toUpperCase()];
+      cmdArgs.forEach((i) => {
+        if(typeof i === 'function') return;
+        items.push(i);
+      });
+      logger.trace(connectionName + 'Execute:', '"' + items.join(' ') + '"');
+    }).on('multi', (cmdArgs) => {
+      let items = [];
+      cmdArgs.forEach((item) => {
+        let tmp = [];
+        item.forEach((i) => {
+          if(typeof i === 'function') return;
+          tmp.push(i);
+        });
+        items.push('"' + tmp.join(' ') + '"');
+      });
+      logger.trace(connectionName + 'Execute multi: ', items.join('; '));
+    });
   }
 
   return ThorinRedisStore;
