@@ -207,25 +207,21 @@ module.exports = function init(thorin) {
      * Runs any redis command, promisified.
      * */
     exec(command) {
+      let args = Array.prototype.slice.call(arguments),
+        callbackFn = args[args.length-1];
+      // call with this.
+      if(typeof callbackFn === 'function') {
+        args.pop();
+        args.splice(0,0, callbackFn);
+        doExec.apply(this, args);
+        return;
+      }
       return new Promise((resolve, reject) => {
-        if (!this.isConnected()) {
-          return reject(thorin.error('REDIS.NOT_CONNECTED', 'The connection is not active yet.'));
-        }
-        command = command.toLowerCase();
-        if (typeof this[connections].default.connection[command] !== 'function') {
-          return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid command issued: ' + command, 500));
-        }
-        let args = Array.prototype.slice.call(arguments);
-        args.splice(0, 1);
-        args.push((err, res) => {
-          args.pop();
-          if (err) {
-            return reject(thorin.error('REDIS.EXEC', 'Redis command failed to execute.', err));
-          }
+        args.splice(0, 0, (e, res) => {
+          if(e) return reject(e);
           resolve(res);
         });
-        this[connections].default.emit('command',command, args);
-        this[connections].default.connection[command].apply(this[connections].default.connection, args);
+        doExec.apply(this, args);
       });
     }
 
@@ -254,36 +250,75 @@ module.exports = function init(thorin) {
       };
 
       /* Commits the multi */
-      wrap.commit = function DoCommit() {
+      wrap.commit = function DoCommit(callbackFn) {
+        // we do it with callback.
+        if(typeof callbackFn === 'function') {
+          doMulti.call(self, connObj, cmds, callbackFn);
+          return wrap;
+        }
         return new Promise((resolve, reject) => {
-          if (!self.isConnected()) {
-            return reject(thorin.error('REDIS.NOT_CONNECTED', 'Redis connection is not ready.'));
-          }
-          if (cmds.length === 0) return resolve();
-          // check commands first.
-          for (let i = 0; i < cmds.length; i++) {
-            let cmd = cmds[i][0];
-            if (typeof connObj[cmd] !== 'function') {
-              return reject(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid redis command:' + cmd, 500));
-            }
-          }
-          var mObj = connObj.multi();
-          cmds.forEach((item) => {
-            let cmd = item.splice(0, 1)[0];
-            mObj[cmd].apply(mObj, item);
-            item.splice(0, 0, cmd);
-          });
-          self[connections].default.emit('multi', cmds);
-          mObj.exec((err, results) => {
-            if (err) {
-              return reject(thorin.error('REDIS.MULTI', 'Redis transaction encountered an error.', err));
-            }
-            resolve(results);
+          doMulti.call(self, connObj, cmds, (e, res) => {
+            if(e) return reject(e);
+            resolve(res);
           });
         });
       };
       return wrap;
     }
+  }
+
+  /*
+  * Wrapper over the thorin exec function, to allow both promise based
+  * and callback based.
+  * */
+  function doExec(callback, command) {
+    let args = Array.prototype.slice.call(arguments);
+    args.splice(0, 2);  //remove the first cb and command
+    if (!this.isConnected()) {
+      return callback(thorin.error('REDIS.NOT_CONNECTED', 'The connection is not active yet.'));
+    }
+    command = command.toLowerCase();
+    if (typeof this[connections].default.connection[command] !== 'function') {
+      return callback(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid command issued: ' + command, 500));
+    }
+    args.push((err, res) => {
+      if (err) {
+        return callback(thorin.error('REDIS.EXEC', 'Redis command failed to execute.', err));
+      }
+      callback(null, res);
+    });
+    this[connections].default.emit('command',command, args);
+    this[connections].default.connection[command].apply(this[connections].default.connection, args);
+  }
+
+  /*
+  * Wrapper over the thorin multi commit(), to allow both promise and async based calls.
+  * */
+  function doMulti(connObj, cmds, callback) {
+    if(!this.isConnected()) {
+      return callback(thorin.error('REDIS.NOT_CONNECTED', 'Redis connection is not ready.', 500));
+    }
+    if(cmds.length === 0) return callback();
+    // check commands first.
+    for (let i = 0; i < cmds.length; i++) {
+      let cmd = cmds[i][0];
+      if (typeof connObj[cmd] !== 'function') {
+        return callback(thorin.error('REDIS.COMMAND_NOT_FOUND', 'Invalid redis command:' + cmd, 500));
+      }
+    }
+    var mObj = connObj.multi();
+    cmds.forEach((item) => {
+      let cmd = item.splice(0, 1)[0];
+      mObj[cmd].apply(mObj, item);
+      item.splice(0, 0, cmd);
+    });
+    this[connections].default.emit('multi', cmds);
+    mObj.exec((err, results) => {
+      if (err) {
+        return callback(thorin.error('REDIS.MULTI', 'Redis transaction encountered an error.', err, 500));
+      }
+      callback(null, results);
+    });
   }
 
   /*
@@ -314,7 +349,7 @@ module.exports = function init(thorin) {
         if(typeof i === 'function') return;
         items.push(i);
       });
-      logger.trace(connectionName + 'Execute:', '"' + items.join(' ') + '"');
+      logger.trace(connectionName + 'Execute: ' + '"' + items.join(' ') + '"');
     }).on('multi', (cmdArgs) => {
       let items = [];
       cmdArgs.forEach((item) => {
