@@ -20,6 +20,7 @@ module.exports = function init(thorin) {
 
     constructor() {
       super();
+      this.type = "redis";
       this[config] = {};
       this[connections] = {
         'default': null,
