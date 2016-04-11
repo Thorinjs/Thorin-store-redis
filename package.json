@@ -3,8 +3,7 @@
   "author": "Stiudeo",
   "version": "1.0.0",
   "dependencies": {
-    "redis": "2.5.3",
-    "async": "^1.4.2"
+    "redis": "2.5.3"
   },
   "description": "Thorin.js redis store",
   "main": "index.js",

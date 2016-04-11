@@ -1,6 +1,5 @@
 'use strict';
-const Connection = require('./lib/connection'),
-  async = require('async');
+const Connection = require('./lib/connection');
 /**
  * Created by Adrian on 29-Mar-16.
  * Events:
@@ -8,6 +7,7 @@ const Connection = require('./lib/connection'),
  *  - disconnect({name})
  */
 module.exports = function init(thorin) {
+  const async = thorin.util.async;
   // Attach the Redis error parser to thorin.
   thorin.addErrorParser(require('./lib/errorParser'));
 
