@@ -367,3 +367,4 @@ module.exports = function init(thorin) {
 
   return ThorinRedisStore;
 };
+module.exports.publicName = 'redis';
