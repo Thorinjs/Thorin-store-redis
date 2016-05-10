@@ -1,7 +1,7 @@
 {
   "name": "thorin-store-redis",
   "author": "Stiudeo",
-  "version": "1.0.3",
+  "version": "1.0.5",
   "dependencies": {
     "redis": "2.5.3"
   },
