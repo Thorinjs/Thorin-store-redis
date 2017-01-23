@@ -1,7 +1,7 @@
 {
   "name": "thorin-store-redis",
-  "author": "Stiudeo",
-  "version": "1.0.12",
+  "author": "UNLOQ Systems",
+  "version": "1.1.0",
   "dependencies": {
     "redis": "2.6.2"
   },
