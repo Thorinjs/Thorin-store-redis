@@ -1,5 +1,6 @@
 'use strict';
-const initStore = require('./lib/redisStore');
+const initStore = require('./lib/redisStore'),
+  initErrorParser = require('./lib/errorParser');
 /**
  * Created by Adrian on 29-Mar-16.
  * Events:
@@ -7,9 +8,8 @@ const initStore = require('./lib/redisStore');
  *  - disconnect({name})
  */
 module.exports = function init(thorin, opt) {
-  const async = thorin.util.async;
   // Attach the Redis error parser to thorin.
-  thorin.addErrorParser(require('./lib/errorParser'));
+  thorin.addErrorParser(initErrorParser);
 
   const ThorinRedisStore = initStore(thorin, opt);
 
