@@ -1,7 +1,7 @@
 {
   "name": "thorin-store-redis",
   "author": "UNLOQ Systems",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "dependencies": {
     "ioredis": "4.16.2"
   },
