@@ -1,9 +1,9 @@
 {
   "name": "thorin-store-redis",
   "author": "UNLOQ Systems",
-  "version": "2.0.1",
+  "version": "2.0.2",
   "dependencies": {
-    "ioredis": "4.16.2"
+    "ioredis": "4.23.0"
   },
   "description": "Thorin.js redis store",
   "main": "index.js",
